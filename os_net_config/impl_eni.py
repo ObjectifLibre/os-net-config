@@ -43,6 +43,7 @@ class ENINetConfig(os_net_config.NetConfig):
         self.routes = {}
         self.bridges = {}
         self.linuxbonds = {}
+        self.ovsbonds = {}
         logger.info('ENI net config provider created.')
 
     def _add_common(self, interface, static_addr=None, ip_version=4):
@@ -87,7 +88,6 @@ class ENINetConfig(os_net_config.NetConfig):
         if interface.linux_bond_name:
             _iface += "    bond-master %s\n" % interface.linux_bond_name
         if isinstance(interface, objects.OvsBridge):
-            data += "auto %s\n" % interface.name
             data += "allow-ovs %s\n" % interface.name
             data += _iface
             data += address_data
@@ -106,7 +106,10 @@ class ENINetConfig(os_net_config.NetConfig):
                                      (interface.name, mac))
             ovs_extra.extend(interface.ovs_extra)
         elif isinstance(interface, objects.LinuxBond):
-            data += "auto %s\n" % interface.name
+            if interface.bridge_name:
+              data += "allow-%s %s\n" % (interface.bridge_name, interface.name)
+            else:
+              data += "auto %s\n" % interface.name
             data += _iface
             if interface.ovs_port:
                 data += "    ovs_bridge %s\n" % interface.bridge_name
@@ -117,6 +120,20 @@ class ENINetConfig(os_net_config.NetConfig):
             if interface.members:
                 members = [member.name for member in interface.members]
                 data += "    bond-slaves %s\n" % ' '.join(members)
+        elif isinstance(interface, objects.OvsBond):
+            if interface.bridge_name:
+              data += "allow-%s %s\n" % (interface.bridge_name, interface.name)
+            else:
+              data += "auto %s\n" % interface.name
+            data += _iface
+            if interface.ovs_port:
+                data += "    ovs_bridge %s\n" % interface.bridge_name
+                data += "    ovs_type OVSBond\n"
+            if interface.members:
+                members = [member.name for member in interface.members]
+                data += "    ovs_bonds %s\n" % ' '.join(members)
+            if interface.ovs_options is not None:
+                data += "    ovs_options other_config:%s" % interface.ovs_options
         elif interface.ovs_port:
             if isinstance(interface, objects.Vlan):
                 data += "auto vlan%i\n" % interface.vlan_id
@@ -145,6 +162,8 @@ class ENINetConfig(os_net_config.NetConfig):
         else:
             if isinstance(interface, objects.Interface) and interface.hotplug:
                 data += "allow-hotplug %s\n" % interface.name
+            elif interface.onboot is False:
+                data += ""
             else:
                 data += "auto %s\n" % interface.name
             data += _iface
@@ -193,6 +212,16 @@ class ENINetConfig(os_net_config.NetConfig):
         data = self._add_common(bond)
         logger.debug('bond data: %s' % data)
         self.linuxbonds[bond.name] = data
+
+    def add_bond(self, bond):
+        """Add an OvsBond object to the net config object.
+
+        :param bond: The OvsBond object to add.
+        """
+        logger.info('adding ovs bond: %s' % bond.name)
+        data = self._add_common(bond)
+        logger.debug('Ovsbond data: %s' % data)
+        self.ovsbonds[bond.name] = data
 
     def add_vlan(self, vlan):
         """Add a Vlan object to the net config object.
@@ -252,6 +281,9 @@ class ENINetConfig(os_net_config.NetConfig):
             new_config += iface_data
 
         for bond_name, bond_data in self.linuxbonds.items():
+            new_config += bond_data
+
+        for bond_name, bond_data in self.ovsbonds.items():
             new_config += bond_data
 
         if utils.diff(_network_config_path(self.root_dir), new_config):
