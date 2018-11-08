@@ -123,17 +123,19 @@ class ENINetConfig(os_net_config.NetConfig):
         elif isinstance(interface, objects.OvsBond):
             if interface.bridge_name:
               data += "allow-%s %s\n" % (interface.bridge_name, interface.name)
+            elif interface.onboot is False:
+                data += ""
             else:
               data += "auto %s\n" % interface.name
             data += _iface
             if interface.ovs_port:
                 data += "    ovs_bridge %s\n" % interface.bridge_name
-                data += "    ovs_type OVSBond\n"
+            data += "    ovs_type OVSBond\n"
             if interface.members:
                 members = [member.name for member in interface.members]
                 data += "    ovs_bonds %s\n" % ' '.join(members)
             if interface.ovs_options is not None:
-                data += "    ovs_options other_config:%s" % interface.ovs_options
+                data += "    ovs_options other_config:%s\n" % interface.ovs_options
         elif interface.ovs_port:
             if isinstance(interface, objects.Vlan):
                 data += "auto vlan%i\n" % interface.vlan_id
