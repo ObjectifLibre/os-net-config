@@ -88,6 +88,8 @@ class ENINetConfig(os_net_config.NetConfig):
         if interface.linux_bond_name:
             _iface += "    bond-master %s\n" % interface.linux_bond_name
         if isinstance(interface, objects.OvsBridge):
+            if interface.onboot:
+                data += "auto %s\n" % interface.name
             data += "allow-ovs %s\n" % interface.name
             data += _iface
             data += address_data
